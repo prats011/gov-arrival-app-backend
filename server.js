@@ -3,12 +3,7 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
-import path from "path";
-import { fileURLToPath } from "url";
 import { z } from 'zod';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 dotenv.config();
 const app = express();
@@ -19,14 +14,6 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
-
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "dist")));
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "dist", "index.html"));
-  });
-}
-
 
 const personalInfoSchema = z.object({
   family_name: z.string().min(1).max(80),
@@ -109,7 +96,7 @@ app.post("/api/health-declaration", async (req, res) => {
       type_of_accommodation: data.type_of_accommodation === 'Others' ? data.type_other || '' : data.type_of_accommodation
     };
 
-    const validation = tripInfoSchema.safeParse(processedData);
+    const validation = tripAccommodationSchema.safeParse(processedData);
     if (!validation.success) {
       const errors = validation.error.errors.reduce((acc, err) => {
         acc[err.path.join('.')] = err.message;

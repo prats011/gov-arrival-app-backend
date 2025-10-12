@@ -2,12 +2,14 @@
   "name": "gov-arrival-app-backend",
   "version": "0.0.1",
   "private": true,
-  "type": "module",
+  "main": "server.js",
   "engines": {
     "node": "^22"
   },
   "scripts": {
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "devrun": "nodemon server.js --watch .",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.74.0",
@@ -15,8 +17,6 @@
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "yup": "^1.7.0"
-  },
-  "devDependencies": {
+    "zod": "^4.1.12"
   }
 }
