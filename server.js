@@ -32,14 +32,8 @@ const personalInfoSchema = z.object({
 });
 
 app.post("/api/personal-info", async (req, res) => {
-  const flattenedData = {
-    ...req.body,
-    nationality: req.body.selected_nationality?.country || '',
-    country_of_residence: req.body.selected_country?.country || '',
-    city_of_residence: req.body.selected_city || '',
-  };
-
-  const validation = personalInfoSchema.safeParse(flattenedData);
+  const bodyData = req.body;
+  const validation = personalInfoSchema.safeParse(bodyData);
 
   if (!validation.success) {
     const errors = validation.error.errors.reduce((acc, err) => {
@@ -86,17 +80,17 @@ const tripAccommodationSchema = z.object({
 
 app.post("/api/health-declaration", async (req, res) => {
   try {
-    const data = req.body;
+    const dabodyDatata = req.body;
 
-    const processedData = {
-      ...data,
-      purpose_of_travel: data.purpose_of_travel === 'Others' ? data.purpose_of_travel_other || '' : data.purpose_of_travel,
-      mode_of_transport_arrival: data.mode_of_transport_arrival === 'Others' ? data.mode_of_transport_arrival_other || '' : data.mode_of_transport_arrival,
-      mode_of_transport_departure: data.mode_of_transport_departure === 'Others' ? data.mode_of_transport_departure_other || '' : data.mode_of_transport_departure,
-      type_of_accommodation: data.type_of_accommodation === 'Others' ? data.type_other || '' : data.type_of_accommodation
-    };
+    // const processedData = {
+    //   ...data,
+    //   purpose_of_travel: data.purpose_of_travel === 'Others' ? data.purpose_of_travel_other || '' : data.purpose_of_travel,
+    //   mode_of_transport_arrival: data.mode_of_transport_arrival === 'Others' ? data.mode_of_transport_arrival_other || '' : data.mode_of_transport_arrival,
+    //   mode_of_transport_departure: data.mode_of_transport_departure === 'Others' ? data.mode_of_transport_departure_other || '' : data.mode_of_transport_departure,
+    //   type_of_accommodation: data.type_of_accommodation === 'Others' ? data.type_other || '' : data.type_of_accommodation
+    // };
 
-    const validation = tripAccommodationSchema.safeParse(processedData);
+    const validation = tripAccommodationSchema.safeParse(bodyData);
     if (!validation.success) {
       const errors = validation.error.errors.reduce((acc, err) => {
         acc[err.path.join('.')] = err.message;
