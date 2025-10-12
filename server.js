@@ -1,5 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
+import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
@@ -11,6 +12,13 @@ const PORT = process.env.PORT || 5001;
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+app.use(
+  cors({
+    origin: "*", // or specify: ['http://localhost:5173']
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
