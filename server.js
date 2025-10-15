@@ -4,13 +4,20 @@ import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
-import { z } from 'zod';
+import { z } from "zod";
+import PDFDocument from "pdfkit";
+import fs from "fs";
+import QRCode from "qrcode";
+import { v4 as uuidv4 } from "uuid";
 
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
 app.use(
   cors({
@@ -24,104 +31,158 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 const personalInfoSchema = z.object({
-  family_name: z.string().min(1).max(80),
-  first_name: z.string().min(1).max(80),
-  middle_name: z.string().max(80).optional().nullable(),
-  passport_no: z.string().min(1).max(20),
-  selected_nationality: z.any(),
-  occupation: z.string().min(1).max(80),
-  gender: z.string().min(1),
-  visa_no: z.string().max(80).optional().nullable(),
-  selected_country: z.any(),
-  selected_city: z.any(),
-  phone_no_code: z.string().min(1).max(5),
-  phone_no: z.string().min(4).max(17),
-  date_of_birth: z.string().min(1)
-});
-
-app.post("/api/personal-info", async (req, res) => {
-  const bodyData = req.body;
-  const validation = personalInfoSchema.safeParse(bodyData);
-
-  if (!validation.success) {
-    const errors = validation.error.errors.reduce((acc, err) => {
-      acc[err.path.join('.')] = err.message;
-      return acc;
-    }, {});
-    return res.status(400).json({ success: false, errors });
-  }
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .insert([validation.data]);
-
-  if (error) {
-    console.error("Supabase error:", error.message);
-    return res.status(500).json({ success: false, error: error.message });
-  }
-
-  res.status(200).json({ success: true, data });
+  family_name: z.string().min(1),
+  first_name: z.string().min(1),
+  middle_name: z.string().optional(),
+  passport_no: z.string().min(1),
+  selected_nationality: z.string(),
+  occupation: z.string(),
+  gender: z.string(),
+  visa_no: z.string().optional(),
+  selected_country: z.string(),
+  selected_city: z.string(),
+  phone_no_code: z.string(),
+  phone_no: z.string(),
+  date_of_birth: z.string(),
 });
 
 const tripAccommodationSchema = z.object({
-  date_of_arrival: z.string().min(1),
-  selected_country: z.string().min(1),
-  purpose_of_travel: z.string().min(1),
-  purpose_other: z.string().optional(),
-  mode_of_travel: z.string().min(1),
-  mode_of_transport: z.string().min(1),
-  mode_of_transport_other: z.string().optional(),
-  flight_no: z.string().min(1),
-  date_of_departure: z.string().min(1),
-  dep_mode_of_travel: z.string().min(1),
-  dep_mode_of_transport: z.string().min(1),
-  dep_mode_of_transport_other: z.string().optional(),
-  dep_flight_no: z.string().min(1),
-  type_of_accommodation: z.string().min(1),
-  type_other: z.string().optional(),
-  province: z.string().min(1),
-  district_area: z.string().min(1),
-  sub_district: z.string().min(1),
-  post_code: z.string().min(4),
-  address: z.string().min(1)
+  date_of_arrival: z.string(),
+  country_boarded: z.string(),
+  purpose_of_travel: z.string(),
+  purpose_of_travel_other: z.string().nullable().optional(),
+  mode_of_travel_arrival: z.string(),
+  mode_of_transport_arrival: z.string(),
+  mode_of_transport_arrival_other: z.string().nullable().optional(),
+  flight_vehicle_no_arrival: z.string(),
+  date_of_departure: z.string().nullable().optional(),
+  mode_of_travel_departure: z.string().nullable().optional(),
+  mode_of_transport_departure: z.string().nullable().optional(),
+  mode_of_transport_departure_other: z.string().nullable().optional(),
+  flight_vehicle_no_departure: z.string().nullable().optional(),
+  type_of_accommodation: z.string(),
+  type_other: z.string().nullable().optional(),
+  province: z.string(),
+  district_area: z.string(),
+  sub_district: z.string(),
+  post_code: z.string(),
+  address: z.string(),
 });
 
-app.post("/api/health-declaration", async (req, res) => {
+const healthSchema = z.object({
+  countries_visited: z
+    .array(z.string())
+    .min(1, "Please select at least one country"),
+});
+
+app.post("/api/create", async (req, res) => {
+  const { personalInfo, tripInfo, health } = req.body;
+  console.log(req.body);
   try {
-    const dabodyDatata = req.body;
+    //1. VALIDATE both data, personal, health and last section
+    const validationPI = personalInfoSchema.safeParse(personalInfo);
+    const validationTR = tripAccommodationSchema.safeParse(tripInfo);
+    const validationH = healthSchema.safeParse(health);
 
-    // const processedData = {
-    //   ...data,
-    //   purpose_of_travel: data.purpose_of_travel === 'Others' ? data.purpose_of_travel_other || '' : data.purpose_of_travel,
-    //   mode_of_transport_arrival: data.mode_of_transport_arrival === 'Others' ? data.mode_of_transport_arrival_other || '' : data.mode_of_transport_arrival,
-    //   mode_of_transport_departure: data.mode_of_transport_departure === 'Others' ? data.mode_of_transport_departure_other || '' : data.mode_of_transport_departure,
-    //   type_of_accommodation: data.type_of_accommodation === 'Others' ? data.type_other || '' : data.type_of_accommodation
-    // };
-
-    const validation = tripAccommodationSchema.safeParse(bodyData);
-    if (!validation.success) {
-      const errors = validation.error.errors.reduce((acc, err) => {
-        acc[err.path.join('.')] = err.message;
-        return acc;
-      }, {});
+    if (
+      !validationPI.success ||
+      !validationTR.success ||
+      !validationH.success
+    ) {
+      const errors = {
+        personalInfo: validationPI.error?.flatten().fieldErrors || {},
+        tripInfo: validationTR.error?.flatten().fieldErrors || {},
+        health: validationH.error?.flatten().fieldErrors || {},
+      };
       return res.status(400).json({ success: false, errors });
     }
+    //2. insert personal info and health declaration
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .insert([validationPI.data])
+      .select();
 
-    const { data: dbData, error } = await supabase
+    if (profileError) throw profileError;
+
+    const travelData = {
+      ...validationTR.data,
+      countries_visited: health.countries_visited,
+    };
+
+    const { data: trData, error: trError } = await supabase
       .from("travel_information")
-      .insert([validation.data]);
+      .insert([travelData])
+      .select();
 
-    if (error) {
-      console.error("Supabase error:", error.message);
-      return res.status(500).json({ success: false, error: error.message });
-    }
+    if (trError) throw trError;
 
-    res.status(200).json({ success: true, data: dbData });
-  } catch (err) {
-    console.error("Server error:", err);
-    res.status(500).json({ success: false, error: "Internal Server Error" });
+    //3. Create a qr code data and pdf qrcode data is random new uuidv4
+    const uniqueId = uuidv4();
+
+    const qrCodeDataURL = await QRCode.toDataURL(uniqueId);
+
+    const doc = new PDFDocument({ margin: 50 });
+    const filePath = `./pdfs/${uniqueId}.pdf`;
+    fs.mkdirSync("./pdfs", { recursive: true });
+    doc.pipe(fs.createWriteStream(filePath));
+
+    
+    doc.fontSize(20).text("Thailand Arrival Declaration", { align: "center" });
+    doc.moveDown();
+
+    doc.fontSize(14).text("Personal Information", { underline: true });
+    Object.entries(validationPI.data).forEach(([key, value]) => {
+      doc.fontSize(12).text(`${key.replaceAll("_", " ")}: ${value}`);
+    });
+    doc.moveDown();
+
+    doc
+      .fontSize(14)
+      .text("Trip & Accommodation Information", { underline: true });
+    Object.entries(validationTR.data).forEach(([key, value]) => {
+      doc.fontSize(12).text(`${key.replaceAll("_", " ")}: ${value}`);
+    });
+    doc.moveDown();
+
+    doc.fontSize(14).text("Health Declaration", { underline: true });
+    doc
+      .fontSize(12)
+      .text(`Countries Visited: ${health.countries_visited.join(", ")}`);
+    doc.moveDown();
+
+    doc.fontSize(14).text("Scan this QR code: ");
+    const qrData = `https://your-server.com/files/${pdfFileName}.pdf`;
+    doc.image(qrData, { fit: [150, 150], align: "center" });
+
+    doc.end();
+
+    //4. insert in final entry form and create qr code etc.
+    const finalData = {
+      profile_id: profileData[0].id,
+      tr_id: trData[0].id,
+      filepath: filePath,
+      qrcode_data: uniqueId,
+    };
+    const { data: formData, error: formError } = await supabase
+      .from("entry_form")
+      .insert([finalData])
+      .select();
+
+    if (formError) throw formError;
+
+    //5. return success or error, all in one try catch
+    res.json({
+      success: true,
+      profile: profileData,
+      travel: trData,
+      entry: formData,
+    });
+  } catch (error) {
+    console.error("Error inserting data:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+app.listen(PORT, () =>
+  console.log(`Server running on http://localhost:${PORT}`)
+);
