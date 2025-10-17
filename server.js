@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 5001;
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 app.use(
@@ -118,8 +118,6 @@ app.post("/api/create", async (req, res) => {
 
     //3. Create a qr code data and pdf qrcode data is random new uuidv4
     const uniqueId = uuidv4();
-
-    const qrCodeDataURL = await QRCode.toDataURL(uniqueId);
 
     const doc = new PDFDocument({ margin: 50 });
     const filePath = `./pdfs/${uniqueId}.pdf`;
