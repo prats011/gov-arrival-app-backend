@@ -119,46 +119,206 @@ app.post("/api/create", async (req, res) => {
     //3. Create a qr code data and pdf qrcode data is random new uuidv4
     const uniqueId = uuidv4();
 
+    const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/pdfs/${uniqueId}.pdf`;
+
     const doc = new PDFDocument({ margin: 50 });
     const filePath = `./pdfs/${uniqueId}.pdf`;
     fs.mkdirSync("./pdfs", { recursive: true });
-    doc.pipe(fs.createWriteStream(filePath));
 
-    
+    const writeStream = fs.createWriteStream(filePath);
+    doc.pipe(writeStream);
+
+    const personalData = validationPI.data;
+    const tripData = validationTR.data;
+
+    // Title
     doc.fontSize(20).text("Thailand Arrival Declaration", { align: "center" });
-    doc.moveDown();
+    doc.moveDown(2);
 
+    // Introductory text
+    doc
+      .fontSize(10)
+      .text(
+        "Thank you for using the Thailand Digital Arrival Card. " +
+          "This Thailand Digital Arrival Card is only valid for one time use for travel on the expected date of " +
+          "arrival indicated below. You may choose to download or print a copy of this and retain it for the duration of " +
+          "your stay. Please note that the Thailand Digital Arrival Card is not a visa. The use of the Thailand Digital " +
+          "Arrival Card e-Service is free of charge."
+      );
+    doc.moveDown(0.5);
+
+    doc
+      .fontSize(10)
+      .text(
+        "Kindly ensure that the information provided is accurate and aligns with your travel documents " +
+          "to avoid any issues upon your arrival in Thailand."
+      );
+    doc.moveDown(0.5);
+
+    doc
+      .fontSize(10)
+      .text(
+        "You can update your Thailand Digital Arrival Card information through the official " +
+          "website at https://tdac.immigration.go.th/arrival-card or by scanning the QR code " +
+          "provided below, before entering Thailand. For more information on Thailand's entry " +
+          "requirements, please visit the official website."
+      );
+    doc.moveDown(1.5);
+
+    // Transaction Date
+    const transactionDate = new Date()
+      .toISOString()
+      .replace("T", " ")
+      .substring(0, 19);
+    doc.fontSize(10).text(`Transaction Date: ${transactionDate}`);
+    doc.moveDown(1.5);
+
+    // Personal Information Section
     doc.fontSize(14).text("Personal Information", { underline: true });
-    Object.entries(validationPI.data).forEach(([key, value]) => {
-      doc.fontSize(12).text(`${key.replaceAll("_", " ")}: ${value}`);
-    });
-    doc.moveDown();
+    doc.moveDown(0.5);
 
-    doc
-      .fontSize(14)
-      .text("Trip & Accommodation Information", { underline: true });
-    Object.entries(validationTR.data).forEach(([key, value]) => {
-      doc.fontSize(12).text(`${key.replaceAll("_", " ")}: ${value}`);
-    });
-    doc.moveDown();
+    doc.fontSize(10);
+    const labelWidth = 200;
+    const colonX = doc.page.width / 2 - 10;
+    const valueX = doc.page.width / 2 + 10;
 
+    // Helper function to draw aligned field
+    const drawField = (label, value) => {
+      const y = doc.y;
+      doc.text(label, doc.page.width / 2 - labelWidth, y, {
+        width: labelWidth,
+        align: "right",
+        continued: false,
+      });
+      doc.text(":", colonX, y, { continued: false });
+      doc.text(value, valueX, y, {
+        width: doc.page.width - valueX - 50,
+        align: "left",
+        continued: false,
+      });
+      doc.moveDown(0.3);
+    };
+
+    drawField(
+      "Full Name :",
+      `${personalData.first_name} ${personalData.middle_name || ""} ${
+        personalData.family_name
+      }`.trim()
+    );
+    drawField("Gender :", personalData.gender);
+    drawField("Nationality/Citizenship :", personalData.selected_nationality);
+    drawField("Passport No. :", personalData.passport_no);
+    drawField("Date of Birth :", personalData.date_of_birth);
+    drawField("Occupation :", personalData.occupation);
+    drawField(
+      "Country/Territory of Residence :",
+      personalData.selected_country
+    );
+    drawField("City/State of Residence :", personalData.selected_city);
+    drawField("Visa No. :", personalData.visa_no || "-");
+    drawField(
+      "Phone No. :",
+      `+${personalData.phone_no_code} ${personalData.phone_no}`
+    );
+    doc.moveDown(1);
+
+    // Trip Information Section
+    doc.x = doc.page.margins.left;
+    doc.fontSize(14).text("Trip Information", { underline: true });
+    doc.moveDown(0.5);
+
+    // Arrival Information
+    doc.x = doc.page.margins.left;
+    doc.fontSize(12).text("Arrival Information", { underline: true });
+    doc.moveDown(0.3);
+    doc.fontSize(10);
+    drawField("Date of Arrival :", tripData.date_of_arrival);
+    drawField("Country Boarded :", tripData.country_boarded);
+    drawField("Purpose of Travel :", tripData.purpose_of_travel);
+    drawField("Mode of Travel :", tripData.mode_of_travel_arrival);
+    drawField("Mode of Transport :", tripData.mode_of_transport_arrival);
+    drawField("Flight No./Vehicle No. :", tripData.flight_vehicle_no_arrival);
+    doc.moveDown(0.8);
+
+    // Departure Information
+    doc.x = doc.page.margins.left;
+    doc.fontSize(12).text("Departure Information", { underline: true });
+    doc.moveDown(0.3);
+    doc.fontSize(10);
+    drawField("Date of Departure :", tripData.date_of_departure || "-");
+    drawField("Mode of Travel :", tripData.mode_of_travel_departure || "-");
+    drawField(
+      "Mode of Transport :",
+      tripData.mode_of_transport_departure || "-"
+    );
+    drawField(
+      "Flight No./Vehicle No. :",
+      tripData.flight_vehicle_no_departure || "-"
+    );
+    doc.moveDown(0.8);
+
+    doc.addPage();
+    // Accommodation Information
+    doc.x = doc.page.margins.left;
+    doc.fontSize(12).text("Accommodation Information", { underline: true });
+    doc.moveDown(0.3);
+    doc.fontSize(10);
+    drawField("Type of Accommodation :", tripData.type_of_accommodation);
+    drawField("Post Code :", tripData.post_code);
+    drawField(
+      "Address :",
+      `${tripData.province}, ${tripData.district_area}, ${tripData.sub_district}, ${tripData.address}`
+    );
+    doc.moveDown(0.8);
+
+    // Health Declaration
+    doc.x = doc.page.margins.left;
     doc.fontSize(14).text("Health Declaration", { underline: true });
-    doc
-      .fontSize(12)
-      .text(`Countries Visited: ${health.countries_visited.join(", ")}`);
-    doc.moveDown();
+    doc.moveDown(0.3);
+    doc.fontSize(10);
+    drawField(
+      "Countries Visited in the past 21 days :",
+      health.countries_visited.join(", ")
+    );
+    doc.moveDown(1.5);
 
-    doc.fontSize(14).text("Scan this QR code: ");
-    const qrData = `https://your-server.com/files/${pdfFileName}.pdf`;
-    doc.image(qrData, { fit: [150, 150], align: "center" });
+    // QR Code
+    doc.fontSize(10).text("Scan this QR code:");
+    doc.moveDown(0.5);
+
+    const qrBuffer = await QRCode.toBuffer(publicUrl, { width: 150 });
+    doc.image(qrBuffer, { fit: [150, 150], align: "center" });
 
     doc.end();
 
-    //4. insert in final entry form and create qr code etc.
+    // Wait for the WRITE STREAM to finish (not the doc)
+    await new Promise((resolve, reject) => {
+      writeStream.on("finish", resolve);
+      writeStream.on("error", reject);
+    });
+
+    const pdfBuffer = fs.readFileSync(filePath);
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("pdfs")
+      .upload(`${uniqueId}.pdf`, pdfBuffer, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error("Upload error:", uploadError);
+      throw uploadError;
+    }
+
+    console.log("PDF uploaded successfully:", publicUrl);
+
+    fs.unlinkSync(filePath);
+
     const finalData = {
       profile_id: profileData[0].id,
       tr_id: trData[0].id,
-      filepath: filePath,
+      filepath: publicUrl,
       qrcode_data: uniqueId,
     };
     const { data: formData, error: formError } = await supabase
@@ -168,12 +328,12 @@ app.post("/api/create", async (req, res) => {
 
     if (formError) throw formError;
 
-    //5. return success or error, all in one try catch
     res.json({
       success: true,
       profile: profileData,
       travel: trData,
       entry: formData,
+      publicUrl,
     });
   } catch (error) {
     console.error("Error inserting data:", error);
