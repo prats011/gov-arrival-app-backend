@@ -19,6 +19,15 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
+const formatDate = (dateString) => {
+  if (!dateString) return "-";
+  const date = new Date(dateString);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  return `${year}/${month}/${day}`;
+};
+
 app.use(
   cors({
     origin: "*", // or specify: ['http://localhost:5173']
@@ -78,6 +87,7 @@ const healthSchema = z.object({
 app.post("/api/create", async (req, res) => {
   const { personalInfo, tripInfo, health } = req.body;
   console.log(req.body);
+
   try {
     //1. VALIDATE both data, personal, health and last section
     const validationPI = personalInfoSchema.safeParse(personalInfo);
@@ -166,10 +176,7 @@ app.post("/api/create", async (req, res) => {
     doc.moveDown(1.5);
 
     // Transaction Date
-    const transactionDate = new Date()
-      .toISOString()
-      .replace("T", " ")
-      .substring(0, 19);
+    const transactionDate = formatDate(new Date().toISOString());
     doc.fontSize(10).text(`Transaction Date: ${transactionDate}`);
     doc.moveDown(1.5);
 
@@ -208,7 +215,7 @@ app.post("/api/create", async (req, res) => {
     drawField("Gender :", personalData.gender);
     drawField("Nationality/Citizenship :", personalData.selected_nationality);
     drawField("Passport No. :", personalData.passport_no);
-    drawField("Date of Birth :", personalData.date_of_birth);
+    drawField("Date of Birth :", formatDate(personalData.date_of_birth));
     drawField("Occupation :", personalData.occupation);
     drawField(
       "Country/Territory of Residence :",
@@ -232,7 +239,7 @@ app.post("/api/create", async (req, res) => {
     doc.fontSize(12).text("Arrival Information", { underline: true });
     doc.moveDown(0.3);
     doc.fontSize(10);
-    drawField("Date of Arrival :", tripData.date_of_arrival);
+    drawField("Date of Arrival :", formatDate(tripData.date_of_arrival));
     drawField("Country Boarded :", tripData.country_boarded);
     drawField("Purpose of Travel :", tripData.purpose_of_travel);
     drawField("Mode of Travel :", tripData.mode_of_travel_arrival);
@@ -245,7 +252,7 @@ app.post("/api/create", async (req, res) => {
     doc.fontSize(12).text("Departure Information", { underline: true });
     doc.moveDown(0.3);
     doc.fontSize(10);
-    drawField("Date of Departure :", tripData.date_of_departure || "-");
+    drawField("Date of Departure :", formatDate(tripData.date_of_departure) || "-");
     drawField("Mode of Travel :", tripData.mode_of_travel_departure || "-");
     drawField(
       "Mode of Transport :",
