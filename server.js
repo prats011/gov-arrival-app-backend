@@ -182,24 +182,23 @@ app.post("/api/create", async (req, res) => {
 
     const qrUpdate = await QRCode.toBuffer(updateUrl, { width: 100 });
 
-    // Save current Y position
     const startY = doc.y;
 
-    // Add QR code on the left
     doc.image(qrUpdate, doc.page.margins.left, startY, { fit: [100, 100] });
 
-    // Add text next to the QR code
-    doc.fontSize(10).text(
-      "To update your information or for further assistance, please scan the QR code",
-      doc.page.margins.left + 120, // Position text to the right of QR
-      startY + 50, // Vertically center the text with QR
-      {
-        width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
-        align: "left",
-      }
-    );
+    doc
+      .fontSize(10)
+      .text(
+        "To update your information or for further assistance, please scan the QR code",
+        doc.page.margins.left + 120,
+        startY + 50,
+        {
+          width:
+            doc.page.width - doc.page.margins.left - doc.page.margins.right,
+          align: "left",
+        }
+      );
 
-    // Move down past the QR code section
     doc.y = startY + 120;
 
     // Transaction Date
@@ -207,54 +206,48 @@ app.post("/api/create", async (req, res) => {
     const transactionDate = formatDate(new Date().toISOString());
     doc.fontSize(10).text(`Transaction Date: ${transactionDate}`);
     doc.moveDown(1.5);
-    // Add rectangle with name and date of arrival
+
     const rectY = doc.y;
     const rectHeight = 20;
     const rectWidth =
       doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
-    // Draw rectangle
     doc.rect(doc.page.margins.left, rectY, rectWidth, rectHeight).stroke();
 
-    // Add name on the left (with padding from left edge)
     const fullName =
-      `${personalData.first_name} ${personalData.family_name}`.trim();
-    doc.fontSize(10).text(
-      fullName,
-      doc.page.margins.left + 10,
-      rectY + rectHeight / 3, // Vertically center
-      {
+      `${personalData.first_name} ${personalData.family_name}`.trim().toUpperCase();
+    doc
+      .fontSize(10)
+      .text(fullName, doc.page.margins.left + 10, rectY + rectHeight / 3, {
         width: rectWidth / 2,
         align: "left",
-      }
-    );
+      });
 
-    // Add Date of Arrival on the right (with padding from right edge)
-    doc.fontSize(10).text(
-      `Date of Arrival: ${formatDate(tripData.date_of_arrival)}`,
-      doc.page.margins.left + rectWidth / 2,
-      rectY + rectHeight / 3, // Vertically center
-      {
-        width: rectWidth / 2 - 10,
-        align: "right",
-      }
-    );
+    doc
+      .fontSize(10)
+      .text(
+        `Date of Arrival                         ${formatDate(
+          tripData.date_of_arrival
+        )}  `,
+        doc.page.margins.left + rectWidth / 2,
+        rectY + rectHeight / 3,
+        {
+          width: rectWidth / 2 - 84,
+          align: "right",
+        }
+      );
 
-    // Second rectangle - starts where first one ends (shares the line)
-    const rect2Y = rectY + rectHeight; // Start at bottom of first rectangle
-    const rect2Height = 140; // Increased height to fit QR code
+    const rect2Y = rectY + rectHeight;
+    const rect2Height = 140;
 
-    // Draw second rectangle (will share top line with first rectangle's bottom)
     doc.rect(doc.page.margins.left, rect2Y, rectWidth, rect2Height).stroke();
 
-    // Add QR code on the left side of second rectangle
     const qrBuffer = await QRCode.toBuffer(publicUrl, { width: 120 });
     doc.image(qrBuffer, doc.page.margins.left + 5, rect2Y + 5, {
       fit: [120, 120],
     });
 
-    // Calculate remaining width for text (after QR code)
-    const qrWidth = 130; // QR code width + padding
+    const qrWidth = 130;
     const remainingWidth = rectWidth - qrWidth;
 
     doc
@@ -295,18 +288,17 @@ app.post("/api/create", async (req, res) => {
         }
       );
 
-    // Add the actual values below the labels
     doc
-      .fontSize(12)
-      .text(uniqueId, doc.page.margins.left + qrWidth, rect2Y + 35, {
+      .fontSize(10)
+      .text(uniqueId.toUpperCase(), doc.page.margins.left + qrWidth, rect2Y + 35, {
         width: remainingWidth / 3 - 10,
         align: "center",
       });
 
     doc
-      .fontSize(12)
+      .fontSize(10)
       .text(
-        personalData.passport_no,
+        personalData.passport_no.toUpperCase(),
         doc.page.margins.left + qrWidth + remainingWidth / 3,
         rect2Y + 35,
         {
@@ -316,9 +308,9 @@ app.post("/api/create", async (req, res) => {
       );
 
     doc
-      .fontSize(12)
+      .fontSize(10)
       .text(
-        tripData.flight_vehicle_no_arrival,
+        tripData.flight_vehicle_no_arrival.toUpperCase(),
         doc.page.margins.left + qrWidth + (remainingWidth * 2) / 3,
         rect2Y + 35,
         {
@@ -327,21 +319,25 @@ app.post("/api/create", async (req, res) => {
         }
       );
 
-    // Move document position below both rectangles
     doc.y = rect2Y + rect2Height + 10;
 
     doc.addPage();
 
-    // Personal Information Section
-    doc.fontSize(14).text("Personal Information", { underline: true });
-    doc.moveDown(0.5);
+    //Next Page
+    doc.fontSize(10).text("TH Digital Arrival Card No.   ");
+    doc.moveDown(1.5);
+    doc.fontSize(10).text("Personal Information");
+    const lineY = doc.y;
+    doc
+      .moveTo(doc.page.margins.left, lineY)
+      .lineTo(doc.page.width - doc.page.margins.right, lineY)
+      .stroke();
+    doc.moveDown(2);
 
     doc.fontSize(10);
     const labelWidth = 200;
-    const colonX = doc.page.width / 2 - 10;
     const valueX = doc.page.width / 2 + 10;
 
-    // Helper function to draw aligned field
     const drawField = (label, value) => {
       const y = doc.y;
       doc.text(label, doc.page.width / 2 - labelWidth, y, {
@@ -349,7 +345,6 @@ app.post("/api/create", async (req, res) => {
         align: "right",
         continued: false,
       });
-      doc.text(":", colonX, y, { continued: false });
       doc.text(value, valueX, y, {
         width: doc.page.width - valueX - 50,
         align: "left",
@@ -359,22 +354,39 @@ app.post("/api/create", async (req, res) => {
     };
 
     drawField(
-      "Full Name :",
+      "Full Name ",
       `${personalData.first_name} ${personalData.middle_name || ""} ${
         personalData.family_name
-      }`.trim()
+      }`
+        .trim()
+        .toUpperCase()
     );
-    drawField("Gender :", personalData.gender);
-    drawField("Nationality/Citizenship :", personalData.selected_nationality);
-    drawField("Passport No. :", personalData.passport_no);
+    doc.moveDown(0.3);
+    drawField("Gender :", personalData.gender.toUpperCase());
+    doc.moveDown(0.3);
+    drawField(
+      "Nationality/Citizenship :",
+      personalData.selected_nationality.toUpperCase()
+    );
+    doc.moveDown(0.3);
+    drawField("Passport No. :", personalData.passport_no.toUpperCase());
+    doc.moveDown(0.3);
     drawField("Date of Birth :", formatDate(personalData.date_of_birth));
-    drawField("Occupation :", personalData.occupation);
+    doc.moveDown(0.3);
+    drawField("Occupation :", personalData.occupation.toUpperCase());
+    doc.moveDown(0.3);
     drawField(
       "Country/Territory of Residence :",
-      personalData.selected_country
+      personalData.selected_country.toUpperCase()
     );
-    drawField("City/State of Residence :", personalData.selected_city);
-    drawField("Visa No. :", personalData.visa_no || "-");
+    doc.moveDown(0.3);
+    drawField(
+      "City/State of Residence :",
+      personalData.selected_city.toUpperCase()
+    );
+    doc.moveDown(0.3);
+    drawField("Visa No. :", (personalData.visa_no || "-").toUpperCase());
+    doc.moveDown(0.3);
     drawField(
       "Phone No. :",
       `+${personalData.phone_no_code} ${personalData.phone_no}`
@@ -383,70 +395,88 @@ app.post("/api/create", async (req, res) => {
 
     // Trip Information Section
     doc.x = doc.page.margins.left;
-    doc.fontSize(14).text("Trip Information", { underline: true });
-    doc.moveDown(0.5);
+    doc.fontSize(10).text("Trip Information");
+    const line = doc.y;
+    doc
+      .moveTo(doc.page.margins.left, line)
+      .lineTo(doc.page.width - doc.page.margins.right, line)
+      .stroke();
+    doc.moveDown(2);
 
     // Arrival Information
     doc.x = doc.page.margins.left;
-    doc.fontSize(12).text("Arrival Information", { underline: true });
+    doc.fontSize(10).text("Arrival Information");
     doc.moveDown(0.3);
     doc.fontSize(10);
     drawField("Date of Arrival :", formatDate(tripData.date_of_arrival));
-    drawField("Country Boarded :", tripData.country_boarded);
-    drawField("Purpose of Travel :", tripData.purpose_of_travel);
-    drawField("Mode of Travel :", tripData.mode_of_travel_arrival);
-    drawField("Mode of Transport :", tripData.mode_of_transport_arrival);
-    drawField("Flight No./Vehicle No. :", tripData.flight_vehicle_no_arrival);
+    doc.moveDown(0.3);
+    drawField("Country Boarded :", tripData.country_boarded.toUpperCase());
+    doc.moveDown(0.3);
+    drawField("Purpose of Travel :", tripData.purpose_of_travel.toUpperCase());
+    doc.moveDown(0.3);
+    drawField(
+      "Mode of Travel :",
+      tripData.mode_of_travel_arrival.toUpperCase()
+    );
+    doc.moveDown(0.3);
+    drawField(
+      "Mode of Transport :",
+      tripData.mode_of_transport_arrival.toUpperCase()
+    );
+    doc.moveDown(0.3);
+    drawField(
+      "Flight No./Vehicle No. :",
+      tripData.flight_vehicle_no_arrival.toUpperCase()
+    );
     doc.moveDown(0.8);
 
     // Departure Information
     doc.x = doc.page.margins.left;
-    doc.fontSize(12).text("Departure Information", { underline: true });
+    doc.fontSize(10).text("Departure Information");
     doc.moveDown(0.3);
     doc.fontSize(10);
     drawField(
       "Date of Departure :",
       formatDate(tripData.date_of_departure) || "-"
     );
-    drawField("Mode of Travel :", tripData.mode_of_travel_departure || "-");
+    doc.moveDown(0.3);
+    drawField(
+      "Mode of Travel :",
+      (tripData.mode_of_travel_departure || "-").toUpperCase()
+    );
+    doc.moveDown(0.3);
     drawField(
       "Mode of Transport :",
-      tripData.mode_of_transport_departure || "-"
+      (tripData.mode_of_transport_departure || "-").toUpperCase()
     );
+    doc.moveDown(0.3);
     drawField(
       "Flight No./Vehicle No. :",
-      tripData.flight_vehicle_no_departure || "-"
+      (tripData.flight_vehicle_no_departure || "-").toUpperCase()
     );
     doc.moveDown(0.8);
 
-    doc.addPage();
-    // Accommodation Information
     doc.x = doc.page.margins.left;
-    doc.fontSize(12).text("Accommodation Information", { underline: true });
+    doc.fontSize(10).text("Accommodation Information");
+    const line1 = doc.y;
+    doc
+      .moveTo(doc.page.margins.left, line1)
+      .lineTo(doc.page.width - doc.page.margins.right, line1)
+      .stroke();
+    doc.moveDown(2);
     doc.moveDown(0.3);
     doc.fontSize(10);
-    drawField("Type of Accommodation :", tripData.type_of_accommodation);
+    drawField(
+      "Type of Accommodation :",
+      tripData.type_of_accommodation.toUpperCase()
+    );
+    doc.moveDown(0.3);
     drawField("Post Code :", tripData.post_code);
+    doc.moveDown(0.3);
     drawField(
       "Address :",
-      `${tripData.province}, ${tripData.district_area}, ${tripData.sub_district}, ${tripData.address}`
+      `${tripData.province}, ${tripData.district_area}, ${tripData.sub_district}, ${tripData.address}`.toUpperCase()
     );
-    doc.moveDown(0.8);
-
-    // Health Declaration
-    doc.x = doc.page.margins.left;
-    doc.fontSize(14).text("Health Declaration", { underline: true });
-    doc.moveDown(0.3);
-    doc.fontSize(10);
-    drawField(
-      "Countries Visited in the past 21 days :",
-      health.countries_visited.join(", ")
-    );
-    doc.moveDown(1.5);
-
-    // QR Code
-    doc.fontSize(10).text("Scan this QR code:");
-    doc.moveDown(0.5);
 
     doc.end();
 
