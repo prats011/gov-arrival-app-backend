@@ -385,7 +385,7 @@ app.post("/api/create", async (req, res) => {
       personalData.selected_city.toUpperCase()
     );
     doc.moveDown(0.3);
-    drawField("Visa No. :", (personalData.visa_no || "-").toUpperCase());
+    drawField("Visa No. :", (personalData.visa_no.toUpperCase() || "-"));
     doc.moveDown(0.3);
     drawField(
       "Phone No. :",
@@ -442,17 +442,17 @@ app.post("/api/create", async (req, res) => {
     doc.moveDown(0.3);
     drawField(
       "Mode of Travel :",
-      (tripData.mode_of_travel_departure || "-").toUpperCase()
+      (tripData.mode_of_travel_departure.toUpperCase() || "-")
     );
     doc.moveDown(0.3);
     drawField(
       "Mode of Transport :",
-      (tripData.mode_of_transport_departure || "-").toUpperCase()
+      (tripData.mode_of_transport_departure.toUpperCase() || "-")
     );
     doc.moveDown(0.3);
     drawField(
       "Flight No./Vehicle No. :",
-      (tripData.flight_vehicle_no_departure || "-").toUpperCase()
+      (tripData.flight_vehicle_no_departure.toUpperCase() || "-")
     );
     doc.moveDown(0.8);
 
@@ -475,7 +475,7 @@ app.post("/api/create", async (req, res) => {
     doc.moveDown(0.3);
     drawField(
       "Address :",
-      `${tripData.province}, ${tripData.district_area}, ${tripData.sub_district}, ${tripData.address}`.toUpperCase()
+      `${tripData.province}, ${tripData.district_area}, ${tripData.sub_district}, ${tripData.address}`
     );
 
     doc.end();
