@@ -131,7 +131,10 @@ app.post("/api/create", async (req, res) => {
 
     const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/pdfs/${uniqueId}.pdf`;
 
-    const doc = new PDFDocument({ margin: 50 });
+    const updateUrl =
+      "https://tdac.immigration.go.th/arrival-card/#/tac/arrival-card/update/search";
+
+    const doc = new PDFDocument({ margin: 30, font: "Times-Roman" });
     const filePath = `./pdfs/${uniqueId}.pdf`;
     fs.mkdirSync("./pdfs", { recursive: true });
 
@@ -142,8 +145,10 @@ app.post("/api/create", async (req, res) => {
     const tripData = validationTR.data;
 
     // Title
-    doc.fontSize(20).text("Thailand Arrival Declaration", { align: "center" });
-    doc.moveDown(2);
+    doc.image("./public/govLogo.jpg", (doc.page.width - 200) / 2, 15, {
+      fit: [200, 200],
+    });
+    doc.moveDown(10);
 
     // Introductory text
     doc
@@ -175,10 +180,157 @@ app.post("/api/create", async (req, res) => {
       );
     doc.moveDown(1.5);
 
+    const qrUpdate = await QRCode.toBuffer(updateUrl, { width: 100 });
+
+    // Save current Y position
+    const startY = doc.y;
+
+    // Add QR code on the left
+    doc.image(qrUpdate, doc.page.margins.left, startY, { fit: [100, 100] });
+
+    // Add text next to the QR code
+    doc.fontSize(10).text(
+      "To update your information or for further assistance, please scan the QR code",
+      doc.page.margins.left + 120, // Position text to the right of QR
+      startY + 50, // Vertically center the text with QR
+      {
+        width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+        align: "left",
+      }
+    );
+
+    // Move down past the QR code section
+    doc.y = startY + 120;
+
     // Transaction Date
+    doc.x = doc.page.margins.left;
     const transactionDate = formatDate(new Date().toISOString());
     doc.fontSize(10).text(`Transaction Date: ${transactionDate}`);
     doc.moveDown(1.5);
+    // Add rectangle with name and date of arrival
+    const rectY = doc.y;
+    const rectHeight = 20;
+    const rectWidth =
+      doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+    // Draw rectangle
+    doc.rect(doc.page.margins.left, rectY, rectWidth, rectHeight).stroke();
+
+    // Add name on the left (with padding from left edge)
+    const fullName =
+      `${personalData.first_name} ${personalData.family_name}`.trim();
+    doc.fontSize(10).text(
+      fullName,
+      doc.page.margins.left + 10,
+      rectY + rectHeight / 3, // Vertically center
+      {
+        width: rectWidth / 2,
+        align: "left",
+      }
+    );
+
+    // Add Date of Arrival on the right (with padding from right edge)
+    doc.fontSize(10).text(
+      `Date of Arrival: ${formatDate(tripData.date_of_arrival)}`,
+      doc.page.margins.left + rectWidth / 2,
+      rectY + rectHeight / 3, // Vertically center
+      {
+        width: rectWidth / 2 - 10,
+        align: "right",
+      }
+    );
+
+    // Second rectangle - starts where first one ends (shares the line)
+    const rect2Y = rectY + rectHeight; // Start at bottom of first rectangle
+    const rect2Height = 140; // Increased height to fit QR code
+
+    // Draw second rectangle (will share top line with first rectangle's bottom)
+    doc.rect(doc.page.margins.left, rect2Y, rectWidth, rect2Height).stroke();
+
+    // Add QR code on the left side of second rectangle
+    const qrBuffer = await QRCode.toBuffer(publicUrl, { width: 120 });
+    doc.image(qrBuffer, doc.page.margins.left + 5, rect2Y + 5, {
+      fit: [120, 120],
+    });
+
+    // Calculate remaining width for text (after QR code)
+    const qrWidth = 130; // QR code width + padding
+    const remainingWidth = rectWidth - qrWidth;
+
+    doc
+      .fontSize(10)
+      .text(
+        "TH Digital Arrival Card No.",
+        doc.page.margins.left + qrWidth,
+        rect2Y + 10,
+        {
+          width: remainingWidth / 3 - 10,
+          align: "center",
+        }
+      );
+
+    // Passport No.
+    doc
+      .fontSize(10)
+      .text(
+        "Passport No.",
+        doc.page.margins.left + qrWidth + remainingWidth / 3,
+        rect2Y + 10,
+        {
+          width: remainingWidth / 3 - 10,
+          align: "center",
+        }
+      );
+
+    // Flight No./Vehicle No.
+    doc
+      .fontSize(10)
+      .text(
+        "Flight No./Vehicle No.",
+        doc.page.margins.left + qrWidth + (remainingWidth * 2) / 3,
+        rect2Y + 10,
+        {
+          width: remainingWidth / 3 - 10,
+          align: "center",
+        }
+      );
+
+    // Add the actual values below the labels
+    doc
+      .fontSize(12)
+      .text(uniqueId, doc.page.margins.left + qrWidth, rect2Y + 35, {
+        width: remainingWidth / 3 - 10,
+        align: "center",
+      });
+
+    doc
+      .fontSize(12)
+      .text(
+        personalData.passport_no,
+        doc.page.margins.left + qrWidth + remainingWidth / 3,
+        rect2Y + 35,
+        {
+          width: remainingWidth / 3 - 10,
+          align: "center",
+        }
+      );
+
+    doc
+      .fontSize(12)
+      .text(
+        tripData.flight_vehicle_no_arrival,
+        doc.page.margins.left + qrWidth + (remainingWidth * 2) / 3,
+        rect2Y + 35,
+        {
+          width: remainingWidth / 3 - 10,
+          align: "center",
+        }
+      );
+
+    // Move document position below both rectangles
+    doc.y = rect2Y + rect2Height + 10;
+
+    doc.addPage();
 
     // Personal Information Section
     doc.fontSize(14).text("Personal Information", { underline: true });
@@ -252,7 +404,10 @@ app.post("/api/create", async (req, res) => {
     doc.fontSize(12).text("Departure Information", { underline: true });
     doc.moveDown(0.3);
     doc.fontSize(10);
-    drawField("Date of Departure :", formatDate(tripData.date_of_departure) || "-");
+    drawField(
+      "Date of Departure :",
+      formatDate(tripData.date_of_departure) || "-"
+    );
     drawField("Mode of Travel :", tripData.mode_of_travel_departure || "-");
     drawField(
       "Mode of Transport :",
@@ -292,9 +447,6 @@ app.post("/api/create", async (req, res) => {
     // QR Code
     doc.fontSize(10).text("Scan this QR code:");
     doc.moveDown(0.5);
-
-    const qrBuffer = await QRCode.toBuffer(publicUrl, { width: 150 });
-    doc.image(qrBuffer, { fit: [150, 150], align: "center" });
 
     doc.end();
 
