@@ -6,7 +6,6 @@ import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
-import fs from "fs";
 import QRCode from "qrcode";
 import { v4 as uuidv4 } from "uuid";
 
@@ -99,9 +98,9 @@ app.post("/api/create", async (req, res) => {
       !validationH.success
     ) {
       const errors = {
-        personalInfo: validationPI.error?.flatten().fieldErrors || {},
-        tripInfo: validationTR.error?.flatten().fieldErrors || {},
-        health: validationH.error?.flatten().fieldErrors || {},
+        personalInfo: validationPI.error?.fieldErrors || {},
+        tripInfo: validationTR.error?.fieldErrors || {},
+        health: validationH.error?.fieldErrors || {},
       };
       return res.status(400).json({ success: false, errors });
     }
@@ -162,6 +161,20 @@ app.post("/api/create", async (req, res) => {
 
     console.log(`Generated unique arrival card number: ${arrivalCardNo}`);
 
+    const personalData = validationPI.data;
+    const tripData = validationTR.data;
+
+    const updateUrl = "http://localhost:5173/update/search";
+
+    const params = new URLSearchParams({
+      cardNo: arrivalCardNo,
+      dob: personalData.date_of_birth,
+      doa: tripData.date_of_arrival,
+      nat: personalData.selected_nationality,
+    });
+
+    const fullUpdateUrl = `${updateUrl}?${params.toString()}`;
+
     const doc = new PDFDocument({ margin: 30, font: "Times-Roman" });
     const chunks = [];
 
@@ -169,9 +182,6 @@ app.post("/api/create", async (req, res) => {
     doc.on("end", () => {
       console.log("PDF created in memory");
     });
-
-    const personalData = validationPI.data;
-    const tripData = validationTR.data;
 
     doc.image("./public/govLogo.jpg", (doc.page.width - 200) / 2, 15, {
       fit: [200, 200],
@@ -207,9 +217,15 @@ app.post("/api/create", async (req, res) => {
       );
     doc.moveDown(1.5);
 
-    const qrUpdate = await QRCode.toBuffer(uniqueId, { errorCorrectionLevel: 'H', width: 90 });
+    const qrUpdate = await QRCode.toBuffer(fullUpdateUrl, {
+      errorCorrectionLevel: "H",
+      width: 90,
+    });
     const startY = doc.y;
-    doc.image(qrUpdate, doc.page.margins.left, startY, { fit: [90, 90], margin: 1 });
+    doc.image(qrUpdate, doc.page.margins.left, startY, {
+      fit: [90, 90],
+      margin: 1,
+    });
 
     doc
       .fontSize(10)
@@ -467,7 +483,8 @@ app.post("/api/create", async (req, res) => {
     doc.moveDown(0.3);
     drawField(
       "Address :",
-      `${tripData.province}, ${tripData.district_area}, ${tripData.sub_district}, `.toUpperCase() + `${tripData.address}`
+      `${tripData.province}, ${tripData.district_area}, ${tripData.sub_district}, `.toUpperCase() +
+        `${tripData.address}`
     );
 
     doc.end();
