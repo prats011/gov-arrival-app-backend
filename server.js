@@ -101,7 +101,7 @@ const createPdf = async (
     doc.on("data", (chunk) => chunks.push(chunk));
     doc.on("end", () => {
       console.log("PDF created in memory");
-      resolve({ chunks }); // Resolve after PDF is complete
+      resolve({ chunks });
     });
     doc.on("error", (err) => reject(err));
 
@@ -165,7 +165,7 @@ const createPdf = async (
       doc.y = startY + 120;
 
       doc.x = doc.page.margins.left;
-      const transactionDate = formatDate(new Date().toISOString(), true); // Add timestamp
+      const transactionDate = formatDate(new Date().toISOString(), true);
       doc.fontSize(10).text(`Transaction Date: ${transactionDate}`);
       doc.moveDown(1.5);
 
