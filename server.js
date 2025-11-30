@@ -584,7 +584,7 @@ app.post("/api/create", async (req, res) => {
   }
 });
 
-app.put("/api/update", async (req, res) => {
+app.put("/api/update-search", async (req, res) => {
   const {
     arrivalCardNo,
     date_of_birth,
