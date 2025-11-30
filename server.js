@@ -18,12 +18,20 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-const formatDate = (dateString) => {
+const formatDate = (dateString, includeTime = false) => {
   if (!dateString) return "-";
   const date = new Date(dateString);
   const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  if (includeTime) {
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+  }
+
   return `${year}/${month}/${day}`;
 };
 
@@ -49,8 +57,10 @@ const personalInfoSchema = z.object({
   visa_no: z.string().optional(),
   selected_country: z.string(),
   selected_city: z.string(),
-  phone_no_code: z.string(),
-  phone_no: z.string(),
+  phone_no_code: z
+    .union([z.string(), z.number()])
+    .transform((val) => String(val)),
+  phone_no: z.union([z.string(), z.number()]).transform((val) => String(val)),
   date_of_birth: z.string(),
 });
 
@@ -76,6 +86,339 @@ const tripAccommodationSchema = z.object({
   post_code: z.string(),
   address: z.string(),
 });
+
+const createPdf = async (
+  personalData,
+  tripData,
+  arrivalCardNo,
+  fullUpdateUrl,
+  uniqueId
+) => {
+  return new Promise(async (resolve, reject) => {
+    const doc = new PDFDocument({ margin: 30, font: "Times-Roman" });
+    const chunks = [];
+
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => {
+      console.log("PDF created in memory");
+      resolve({ chunks }); // Resolve after PDF is complete
+    });
+    doc.on("error", (err) => reject(err));
+
+    try {
+      doc.image("./public/govLogo.jpg", (doc.page.width - 200) / 2, 15, {
+        fit: [200, 200],
+      });
+      doc.moveDown(10);
+
+      doc
+        .fontSize(10)
+        .text(
+          "Thank you for using the Thailand Digital Arrival Card. " +
+            "This Thailand Digital Arrival Card is only valid for one time use for travel on the expected date of " +
+            "arrival indicated below. You may choose to download or print a copy of this and retain it for the duration of " +
+            "your stay. Please note that the Thailand Digital Arrival Card is not a visa. The use of the Thailand Digital " +
+            "Arrival Card e-Service is free of charge."
+        );
+      doc.moveDown(0.5);
+
+      doc
+        .fontSize(10)
+        .text(
+          "Kindly ensure that the information provided is accurate and aligns with your travel documents " +
+            "to avoid any issues upon your arrival in Thailand."
+        );
+      doc.moveDown(0.5);
+
+      doc
+        .fontSize(10)
+        .text(
+          "You can update your Thailand Digital Arrival Card information through the official " +
+            "website at https://tdac.immigration.go.th/arrival-card or by scanning the QR code " +
+            "provided below, before entering Thailand. For more information on Thailand's entry " +
+            "requirements, please visit the official website."
+        );
+      doc.moveDown(1.5);
+
+      const qrUpdate = await QRCode.toBuffer(fullUpdateUrl, {
+        errorCorrectionLevel: "H",
+        width: 90,
+      });
+      const startY = doc.y;
+      doc.image(qrUpdate, doc.page.margins.left, startY, {
+        fit: [90, 90],
+        margin: 1,
+      });
+
+      doc
+        .fontSize(10)
+        .text(
+          "To update your information or for further assistance, please scan the QR code",
+          doc.page.margins.left + 120,
+          startY + 50,
+          {
+            width:
+              doc.page.width - doc.page.margins.left - doc.page.margins.right,
+            align: "left",
+          }
+        );
+      doc.y = startY + 120;
+
+      doc.x = doc.page.margins.left;
+      const transactionDate = formatDate(new Date().toISOString(), true); // Add timestamp
+      doc.fontSize(10).text(`Transaction Date: ${transactionDate}`);
+      doc.moveDown(1.5);
+
+      const rectY = doc.y;
+      const rectHeight = 20;
+      const rectWidth =
+        doc.page.width - doc.page.margins.left - doc.page.margins.right;
+      doc.rect(doc.page.margins.left, rectY, rectWidth, rectHeight).stroke();
+
+      const fullName = `${personalData.first_name} ${personalData.family_name}`
+        .trim()
+        .toUpperCase();
+      doc
+        .fontSize(10)
+        .text(fullName, doc.page.margins.left + 10, rectY + rectHeight / 3, {
+          width: rectWidth / 2,
+          align: "left",
+        });
+
+      doc
+        .fontSize(10)
+        .text(
+          `Date of Arrival                         ${formatDate(
+            tripData.date_of_arrival
+          )}  `,
+          doc.page.margins.left + rectWidth / 2,
+          rectY + rectHeight / 3,
+          { width: rectWidth / 2 - 84, align: "right" }
+        );
+
+      const rect2Y = rectY + rectHeight;
+      const rect2Height = 140;
+      doc.rect(doc.page.margins.left, rect2Y, rectWidth, rect2Height).stroke();
+
+      const qrBuffer = await QRCode.toBuffer(uniqueId, { width: 120 });
+      doc.image(qrBuffer, doc.page.margins.left + 5, rect2Y + 5, {
+        fit: [120, 120],
+      });
+
+      const qrWidth = 130;
+      const remainingWidth = rectWidth - qrWidth;
+
+      doc
+        .fontSize(10)
+        .text(
+          "TH Digital Arrival Card No.",
+          doc.page.margins.left + qrWidth,
+          rect2Y + 10,
+          { width: remainingWidth / 3 - 10, align: "center" }
+        );
+      doc
+        .fontSize(10)
+        .text(
+          "Passport No.",
+          doc.page.margins.left + qrWidth + remainingWidth / 3,
+          rect2Y + 10,
+          { width: remainingWidth / 3 - 10, align: "center" }
+        );
+      doc
+        .fontSize(10)
+        .text(
+          "Flight No./Vehicle No.",
+          doc.page.margins.left + qrWidth + (remainingWidth * 2) / 3,
+          rect2Y + 10,
+          { width: remainingWidth / 3 - 10, align: "center" }
+        );
+
+      doc
+        .fontSize(10)
+        .text(arrivalCardNo, doc.page.margins.left + qrWidth, rect2Y + 35, {
+          width: remainingWidth / 3 - 10,
+          align: "center",
+        });
+      doc
+        .fontSize(10)
+        .text(
+          personalData.passport_no.toUpperCase(),
+          doc.page.margins.left + qrWidth + remainingWidth / 3,
+          rect2Y + 35,
+          { width: remainingWidth / 3 - 10, align: "center" }
+        );
+      doc
+        .fontSize(10)
+        .text(
+          tripData.flight_vehicle_no_arrival.toUpperCase(),
+          doc.page.margins.left + qrWidth + (remainingWidth * 2) / 3,
+          rect2Y + 35,
+          { width: remainingWidth / 3 - 10, align: "center" }
+        );
+
+      doc.y = rect2Y + rect2Height + 10;
+      doc.addPage();
+
+      //Next Page
+      doc.fontSize(10).text(`TH Digital Arrival Card No.  ${arrivalCardNo}`);
+      doc.moveDown(1.5);
+      doc.fontSize(10).text("Personal Information");
+      let lineY = doc.y;
+      doc
+        .moveTo(doc.page.margins.left, lineY)
+        .lineTo(doc.page.width - doc.page.margins.right, lineY)
+        .stroke();
+      doc.moveDown(2);
+
+      doc.fontSize(10);
+      const labelWidth = 200;
+      const valueX = doc.page.width / 2 + 10;
+
+      const drawField = (label, value) => {
+        const y = doc.y;
+        doc.text(label, doc.page.width / 2 - labelWidth, y, {
+          width: labelWidth,
+          align: "right",
+          continued: false,
+        });
+        doc.text(value, valueX, y, {
+          width: doc.page.width - valueX - 50,
+          align: "left",
+          continued: false,
+        });
+        doc.moveDown(0.3);
+      };
+
+      drawField(
+        "Full Name :",
+        `${personalData.first_name} ${personalData.middle_name || ""} ${
+          personalData.family_name
+        }`
+          .trim()
+          .toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField("Gender :", personalData.gender.toUpperCase());
+      doc.moveDown(0.3);
+      drawField(
+        "Nationality/Citizenship :",
+        personalData.selected_nationality.toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField("Passport No. :", personalData.passport_no.toUpperCase());
+      doc.moveDown(0.3);
+      drawField("Date of Birth :", formatDate(personalData.date_of_birth));
+      doc.moveDown(0.3);
+      drawField("Occupation :", personalData.occupation.toUpperCase());
+      doc.moveDown(0.3);
+      drawField(
+        "Country/Territory of Residence :",
+        personalData.selected_country.toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField(
+        "City/State of Residence :",
+        personalData.selected_city.toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField("Visa No. :", (personalData.visa_no || "-").toUpperCase());
+      doc.moveDown(0.3);
+      drawField(
+        "Phone No. :",
+        `+${personalData.phone_no_code} ${personalData.phone_no}`
+      );
+      doc.moveDown(1);
+
+      doc.x = doc.page.margins.left;
+      doc.fontSize(10).text("Trip Information");
+      lineY = doc.y;
+      doc
+        .moveTo(doc.page.margins.left, lineY)
+        .lineTo(doc.page.width - doc.page.margins.right, lineY)
+        .stroke();
+      doc.moveDown(2);
+
+      doc.x = doc.page.margins.left;
+      doc.fontSize(10).text("Arrival Information");
+      doc.moveDown(0.3);
+      drawField("Date of Arrival :", formatDate(tripData.date_of_arrival));
+      doc.moveDown(0.3);
+      drawField("Country Boarded :", tripData.country_boarded.toUpperCase());
+      doc.moveDown(0.3);
+      drawField(
+        "Purpose of Travel :",
+        tripData.purpose_of_travel.toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField(
+        "Mode of Travel :",
+        tripData.mode_of_travel_arrival.toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField(
+        "Mode of Transport :",
+        tripData.mode_of_transport_arrival.toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField(
+        "Flight No./Vehicle No. :",
+        tripData.flight_vehicle_no_arrival.toUpperCase()
+      );
+      doc.moveDown(0.8);
+
+      doc.x = doc.page.margins.left;
+      doc.fontSize(10).text("Departure Information");
+      doc.moveDown(0.3);
+      drawField(
+        "Date of Departure :",
+        tripData.date_of_departure
+          ? formatDate(tripData.date_of_departure)
+          : "-"
+      );
+      doc.moveDown(0.3);
+      drawField(
+        "Mode of Travel :",
+        (tripData.mode_of_travel_departure || "-").toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField(
+        "Mode of Transport :",
+        (tripData.mode_of_transport_departure || "-").toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField(
+        "Flight No./Vehicle No. :",
+        (tripData.flight_vehicle_no_departure || "-").toUpperCase()
+      );
+      doc.moveDown(0.8);
+
+      doc.x = doc.page.margins.left;
+      doc.fontSize(10).text("Accommodation Information");
+      lineY = doc.y;
+      doc
+        .moveTo(doc.page.margins.left, lineY)
+        .lineTo(doc.page.width - doc.page.margins.right, lineY)
+        .stroke();
+      doc.moveDown(2);
+      drawField(
+        "Type of Accommodation :",
+        tripData.type_of_accommodation.toUpperCase()
+      );
+      doc.moveDown(0.3);
+      drawField("Post Code :", tripData.post_code);
+      doc.moveDown(0.3);
+      drawField(
+        "Address :",
+        `${tripData.province}, ${tripData.district_area}, ${tripData.sub_district}, `.toUpperCase() +
+          `${tripData.address}`
+      );
+
+      doc.end(); // This triggers the 'end' event
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
 
 const healthSchema = z.object({
   countries_visited: z
@@ -175,324 +518,14 @@ app.post("/api/create", async (req, res) => {
 
     const fullUpdateUrl = `${updateUrl}?${params.toString()}`;
 
-    const doc = new PDFDocument({ margin: 30, font: "Times-Roman" });
-    const chunks = [];
-
-    doc.on("data", (chunk) => chunks.push(chunk));
-    doc.on("end", () => {
-      console.log("PDF created in memory");
-    });
-
-    doc.image("./public/govLogo.jpg", (doc.page.width - 200) / 2, 15, {
-      fit: [200, 200],
-    });
-    doc.moveDown(10);
-
-    doc
-      .fontSize(10)
-      .text(
-        "Thank you for using the Thailand Digital Arrival Card. " +
-          "This Thailand Digital Arrival Card is only valid for one time use for travel on the expected date of " +
-          "arrival indicated below. You may choose to download or print a copy of this and retain it for the duration of " +
-          "your stay. Please note that the Thailand Digital Arrival Card is not a visa. The use of the Thailand Digital " +
-          "Arrival Card e-Service is free of charge."
-      );
-    doc.moveDown(0.5);
-
-    doc
-      .fontSize(10)
-      .text(
-        "Kindly ensure that the information provided is accurate and aligns with your travel documents " +
-          "to avoid any issues upon your arrival in Thailand."
-      );
-    doc.moveDown(0.5);
-
-    doc
-      .fontSize(10)
-      .text(
-        "You can update your Thailand Digital Arrival Card information through the official " +
-          "website at https://tdac.immigration.go.th/arrival-card or by scanning the QR code " +
-          "provided below, before entering Thailand. For more information on Thailand's entry " +
-          "requirements, please visit the official website."
-      );
-    doc.moveDown(1.5);
-
-    const qrUpdate = await QRCode.toBuffer(fullUpdateUrl, {
-      errorCorrectionLevel: "H",
-      width: 90,
-    });
-    const startY = doc.y;
-    doc.image(qrUpdate, doc.page.margins.left, startY, {
-      fit: [90, 90],
-      margin: 1,
-    });
-
-    doc
-      .fontSize(10)
-      .text(
-        "To update your information or for further assistance, please scan the QR code",
-        doc.page.margins.left + 120,
-        startY + 50,
-        {
-          width:
-            doc.page.width - doc.page.margins.left - doc.page.margins.right,
-          align: "left",
-        }
-      );
-    doc.y = startY + 120;
-
-    doc.x = doc.page.margins.left;
-    const transactionDate = formatDate(new Date().toISOString());
-    doc.fontSize(10).text(`Transaction Date: ${transactionDate}`);
-    doc.moveDown(1.5);
-
-    const rectY = doc.y;
-    const rectHeight = 20;
-    const rectWidth =
-      doc.page.width - doc.page.margins.left - doc.page.margins.right;
-    doc.rect(doc.page.margins.left, rectY, rectWidth, rectHeight).stroke();
-
-    const fullName = `${personalData.first_name} ${personalData.family_name}`
-      .trim()
-      .toUpperCase();
-    doc
-      .fontSize(10)
-      .text(fullName, doc.page.margins.left + 10, rectY + rectHeight / 3, {
-        width: rectWidth / 2,
-        align: "left",
-      });
-
-    doc
-      .fontSize(10)
-      .text(
-        `Date of Arrival                         ${formatDate(
-          tripData.date_of_arrival
-        )}  `,
-        doc.page.margins.left + rectWidth / 2,
-        rectY + rectHeight / 3,
-        { width: rectWidth / 2 - 84, align: "right" }
-      );
-
-    const rect2Y = rectY + rectHeight;
-    const rect2Height = 140;
-    doc.rect(doc.page.margins.left, rect2Y, rectWidth, rect2Height).stroke();
-
-    const qrBuffer = await QRCode.toBuffer(uniqueId, { width: 120 });
-    doc.image(qrBuffer, doc.page.margins.left + 5, rect2Y + 5, {
-      fit: [120, 120],
-    });
-
-    const qrWidth = 130;
-    const remainingWidth = rectWidth - qrWidth;
-
-    doc
-      .fontSize(10)
-      .text(
-        "TH Digital Arrival Card No.",
-        doc.page.margins.left + qrWidth,
-        rect2Y + 10,
-        { width: remainingWidth / 3 - 10, align: "center" }
-      );
-    doc
-      .fontSize(10)
-      .text(
-        "Passport No.",
-        doc.page.margins.left + qrWidth + remainingWidth / 3,
-        rect2Y + 10,
-        { width: remainingWidth / 3 - 10, align: "center" }
-      );
-    doc
-      .fontSize(10)
-      .text(
-        "Flight No./Vehicle No.",
-        doc.page.margins.left + qrWidth + (remainingWidth * 2) / 3,
-        rect2Y + 10,
-        { width: remainingWidth / 3 - 10, align: "center" }
-      );
-
-    doc
-      .fontSize(10)
-      .text(
-        arrivalCardNo.toUpperCase(),
-        doc.page.margins.left + qrWidth,
-        rect2Y + 35,
-        { width: remainingWidth / 3 - 10, align: "center" }
-      );
-    doc
-      .fontSize(10)
-      .text(
-        personalData.passport_no.toUpperCase(),
-        doc.page.margins.left + qrWidth + remainingWidth / 3,
-        rect2Y + 35,
-        { width: remainingWidth / 3 - 10, align: "center" }
-      );
-    doc
-      .fontSize(10)
-      .text(
-        tripData.flight_vehicle_no_arrival.toUpperCase(),
-        doc.page.margins.left + qrWidth + (remainingWidth * 2) / 3,
-        rect2Y + 35,
-        { width: remainingWidth / 3 - 10, align: "center" }
-      );
-
-    doc.y = rect2Y + rect2Height + 10;
-    doc.addPage();
-
-    //Next Page
-    doc.fontSize(10).text(`TH Digital Arrival Card No.  ${arrivalCardNo}`);
-    doc.moveDown(1.5);
-    doc.fontSize(10).text("Personal Information");
-    let lineY = doc.y;
-    doc
-      .moveTo(doc.page.margins.left, lineY)
-      .lineTo(doc.page.width - doc.page.margins.right, lineY)
-      .stroke();
-    doc.moveDown(2);
-
-    doc.fontSize(10);
-    const labelWidth = 200;
-    const valueX = doc.page.width / 2 + 10;
-
-    const drawField = (label, value) => {
-      const y = doc.y;
-      doc.text(label, doc.page.width / 2 - labelWidth, y, {
-        width: labelWidth,
-        align: "right",
-        continued: false,
-      });
-      doc.text(value, valueX, y, {
-        width: doc.page.width - valueX - 50,
-        align: "left",
-        continued: false,
-      });
-      doc.moveDown(0.3);
-    };
-
-    drawField(
-      "Full Name ",
-      `${personalData.first_name} ${personalData.middle_name || ""} ${
-        personalData.family_name
-      }`
-        .trim()
-        .toUpperCase()
+    // FIXED: Only destructure chunks
+    const { chunks } = await createPdf(
+      personalData,
+      tripData,
+      arrivalCardNo,
+      fullUpdateUrl,
+      uniqueId
     );
-    doc.moveDown(0.3);
-    drawField("Gender :", personalData.gender.toUpperCase());
-    doc.moveDown(0.3);
-    drawField(
-      "Nationality/Citizenship :",
-      personalData.selected_nationality.toUpperCase()
-    );
-    doc.moveDown(0.3);
-    drawField("Passport No. :", personalData.passport_no.toUpperCase());
-    doc.moveDown(0.3);
-    drawField("Date of Birth :", formatDate(personalData.date_of_birth));
-    doc.moveDown(0.3);
-    drawField("Occupation :", personalData.occupation.toUpperCase());
-    doc.moveDown(0.3);
-    drawField(
-      "Country/Territory of Residence :",
-      personalData.selected_country.toUpperCase()
-    );
-    doc.moveDown(0.3);
-    drawField(
-      "City/State of Residence :",
-      personalData.selected_city.toUpperCase()
-    );
-    doc.moveDown(0.3);
-    drawField("Visa No. :", (personalData.visa_no || "-").toUpperCase());
-    doc.moveDown(0.3);
-    drawField(
-      "Phone No. :",
-      `+${personalData.phone_no_code} ${personalData.phone_no}`
-    );
-    doc.moveDown(1);
-
-    doc.x = doc.page.margins.left;
-    doc.fontSize(10).text("Trip Information");
-    lineY = doc.y;
-    doc
-      .moveTo(doc.page.margins.left, lineY)
-      .lineTo(doc.page.width - doc.page.margins.right, lineY)
-      .stroke();
-    doc.moveDown(2);
-
-    doc.x = doc.page.margins.left;
-    doc.fontSize(10).text("Arrival Information");
-    doc.moveDown(0.3);
-    drawField("Date of Arrival :", formatDate(tripData.date_of_arrival));
-    doc.moveDown(0.3);
-    drawField("Country Boarded :", tripData.country_boarded.toUpperCase());
-    doc.moveDown(0.3);
-    drawField("Purpose of Travel :", tripData.purpose_of_travel.toUpperCase());
-    doc.moveDown(0.3);
-    drawField(
-      "Mode of Travel :",
-      tripData.mode_of_travel_arrival.toUpperCase()
-    );
-    doc.moveDown(0.3);
-    drawField(
-      "Mode of Transport :",
-      tripData.mode_of_transport_arrival.toUpperCase()
-    );
-    doc.moveDown(0.3);
-    drawField(
-      "Flight No./Vehicle No. :",
-      tripData.flight_vehicle_no_arrival.toUpperCase()
-    );
-    doc.moveDown(0.8);
-
-    doc.x = doc.page.margins.left;
-    doc.fontSize(10).text("Departure Information");
-    doc.moveDown(0.3);
-    drawField(
-      "Date of Departure :",
-      formatDate(tripData.date_of_departure) || "-"
-    );
-    doc.moveDown(0.3);
-    drawField(
-      "Mode of Travel :",
-      (tripData.mode_of_travel_departure || "-").toUpperCase()
-    );
-    doc.moveDown(0.3);
-    drawField(
-      "Mode of Transport :",
-      (tripData.mode_of_transport_departure || "-").toUpperCase()
-    );
-    doc.moveDown(0.3);
-    drawField(
-      "Flight No./Vehicle No. :",
-      (tripData.flight_vehicle_no_departure || "-").toUpperCase()
-    );
-    doc.moveDown(0.8);
-
-    doc.x = doc.page.margins.left;
-    doc.fontSize(10).text("Accommodation Information");
-    lineY = doc.y;
-    doc
-      .moveTo(doc.page.margins.left, lineY)
-      .lineTo(doc.page.width - doc.page.margins.right, lineY)
-      .stroke();
-    doc.moveDown(2);
-    drawField(
-      "Type of Accommodation :",
-      tripData.type_of_accommodation.toUpperCase()
-    );
-    doc.moveDown(0.3);
-    drawField("Post Code :", tripData.post_code);
-    doc.moveDown(0.3);
-    drawField(
-      "Address :",
-      `${tripData.province}, ${tripData.district_area}, ${tripData.sub_district}, `.toUpperCase() +
-        `${tripData.address}`
-    );
-
-    doc.end();
-
-    await new Promise((resolve, reject) => {
-      doc.on("end", resolve);
-      doc.on("error", reject);
-    });
 
     const pdfBuffer = Buffer.concat(chunks);
 
@@ -548,6 +581,276 @@ app.post("/api/create", async (req, res) => {
   } catch (error) {
     console.error("Error inserting data:", error);
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.put("/api/update", async (req, res) => {
+  const {
+    arrivalCardNo,
+    date_of_birth,
+    date_of_arrival,
+    selected_nationality,
+  } = req.body;
+
+  try {
+    if (
+      !arrivalCardNo ||
+      !date_of_birth ||
+      !date_of_arrival ||
+      !selected_nationality
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "All search fields are required",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("entry_form")
+      .select(
+        `
+        *,
+        profiles!inner(
+          *
+        ),
+        travel_information!inner(
+          *
+        )
+      `
+      )
+      .eq("arrival_card_no", arrivalCardNo)
+      .eq("profiles.date_of_birth", date_of_birth)
+      .eq("profiles.selected_nationality", selected_nationality)
+      .eq("travel_information.date_of_arrival", date_of_arrival)
+      .single();
+
+    if (error) {
+      console.error("Supabase error:", error);
+
+      if (error.code === "PGRST116") {
+        return res.status(404).json({
+          success: false,
+          message:
+            "No matching record found. Please check your information and try again.",
+        });
+      }
+
+      throw error;
+    }
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "No matching record found. Please check your information and try again.",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: data,
+    });
+  } catch (error) {
+    console.error("Error searching data:", error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while searching. Please try again.",
+    });
+  }
+});
+
+app.put("/api/update-form", async (req, res) => {
+  const { entry_form_id, profile_id, tr_id, personalInfo, tripInfo } = req.body;
+
+  try {
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        occupation: personalInfo.occupation,
+        gender: personalInfo.gender,
+        visa_no: personalInfo.visa_no,
+        selected_country: personalInfo.selected_country,
+        selected_city: personalInfo.selected_city,
+        phone_no_code: String(personalInfo.phone_no_code),
+        phone_no: String(personalInfo.phone_no),
+      })
+      .eq("id", profile_id);
+
+    if (profileError) throw profileError;
+
+    const { error: travelError } = await supabase
+      .from("travel_information")
+      .update({
+        date_of_arrival: tripInfo.date_of_arrival,
+        date_of_departure: tripInfo.date_of_departure,
+        country_boarded: tripInfo.country_boarded,
+        purpose_of_travel: tripInfo.purpose_of_travel,
+        mode_of_travel_arrival: tripInfo.mode_of_travel_arrival,
+        mode_of_transport_arrival: tripInfo.mode_of_transport_arrival,
+        flight_vehicle_no_arrival: tripInfo.flight_vehicle_no_arrival,
+        mode_of_travel_departure: tripInfo.mode_of_travel_departure,
+        mode_of_transport_departure: tripInfo.mode_of_transport_departure,
+        flight_vehicle_no_departure: tripInfo.flight_vehicle_no_departure,
+        type_of_accommodation: tripInfo.type_of_accommodation,
+        province: tripInfo.province,
+        district_area: tripInfo.district_area,
+        sub_district: tripInfo.sub_district,
+        post_code: tripInfo.post_code,
+        address: tripInfo.address,
+        countries_visited: tripInfo.countries_visited,
+      })
+      .eq("id", tr_id);
+
+    if (travelError) throw travelError;
+
+    const { data: updatedData, error: fetchError } = await supabase
+      .from("entry_form")
+      .select(
+        `
+        *,
+        profiles(*),
+        travel_information(*)
+      `
+      )
+      .eq("id", entry_form_id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    console.log("Fetched updated data from database:", updatedData);
+
+    if (updatedData.filepath) {
+      const oldFileName = updatedData.filepath.split("/").pop().split("?")[0];
+      console.log("Attempting to delete old PDF:", oldFileName);
+
+      const { error: deleteError } = await supabase.storage
+        .from("pdfs")
+        .remove([oldFileName]);
+
+      if (deleteError) {
+        console.warn("Warning: Could not delete old PDF:", deleteError);
+      } else {
+        console.log("Old PDF deleted successfully");
+      }
+    }
+
+    const personalData = {
+      first_name: updatedData.profiles.first_name,
+      middle_name: updatedData.profiles.middle_name,
+      family_name: updatedData.profiles.family_name,
+      passport_no: updatedData.profiles.passport_no,
+      selected_nationality: updatedData.profiles.selected_nationality,
+      date_of_birth: updatedData.profiles.date_of_birth,
+      occupation: updatedData.profiles.occupation,
+      gender: updatedData.profiles.gender,
+      visa_no: updatedData.profiles.visa_no,
+      selected_country: updatedData.profiles.selected_country,
+      selected_city: updatedData.profiles.selected_city,
+      phone_no_code: updatedData.profiles.phone_no_code,
+      phone_no: updatedData.profiles.phone_no,
+    };
+
+    const tripData = {
+      date_of_arrival: updatedData.travel_information.date_of_arrival,
+      date_of_departure: updatedData.travel_information.date_of_departure,
+      country_boarded: updatedData.travel_information.country_boarded,
+      purpose_of_travel: updatedData.travel_information.purpose_of_travel,
+      mode_of_travel_arrival:
+        updatedData.travel_information.mode_of_travel_arrival,
+      mode_of_transport_arrival:
+        updatedData.travel_information.mode_of_transport_arrival,
+      flight_vehicle_no_arrival:
+        updatedData.travel_information.flight_vehicle_no_arrival,
+      mode_of_travel_departure:
+        updatedData.travel_information.mode_of_travel_departure,
+      mode_of_transport_departure:
+        updatedData.travel_information.mode_of_transport_departure,
+      flight_vehicle_no_departure:
+        updatedData.travel_information.flight_vehicle_no_departure,
+      type_of_accommodation:
+        updatedData.travel_information.type_of_accommodation,
+      province: updatedData.travel_information.province,
+      district_area: updatedData.travel_information.district_area,
+      sub_district: updatedData.travel_information.sub_district,
+      post_code: updatedData.travel_information.post_code,
+      address: updatedData.travel_information.address,
+    };
+
+    const arrivalCardNo = updatedData.arrival_card_no;
+    const uniqueId = updatedData.qrcode_data;
+
+    const updateUrl = "http://localhost:5173/update/search";
+    const params = new URLSearchParams({
+      cardNo: arrivalCardNo,
+      dob: personalData.date_of_birth,
+      doa: tripData.date_of_arrival,
+      nat: personalData.selected_nationality,
+    });
+    const fullUpdateUrl = `${updateUrl}?${params.toString()}`;
+
+    console.log("Generating new PDF with:");
+    console.log("Personal Data:", personalData);
+    console.log("Trip Data:", tripData);
+    console.log("Arrival Card No:", arrivalCardNo);
+    console.log("Update URL:", fullUpdateUrl);
+
+    const { chunks } = await createPdf(
+      personalData,
+      tripData,
+      arrivalCardNo,
+      fullUpdateUrl,
+      uniqueId
+    );
+
+    const pdfBuffer = Buffer.concat(chunks);
+    console.log("PDF buffer size:", pdfBuffer.length);
+
+    const fileName = `${uniqueId}.pdf`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("pdfs")
+      .upload(fileName, pdfBuffer, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("Upload error:", uploadError);
+      throw new Error(`Failed to upload PDF: ${uploadError.message}`);
+    }
+
+    console.log("New PDF uploaded successfully:", fileName);
+
+    const timestamp = Date.now();
+    const { data: publicUrlData } = supabase.storage
+      .from("pdfs")
+      .getPublicUrl(fileName);
+
+    const newPublicUrl = `${publicUrlData.publicUrl}?t=${timestamp}`;
+    console.log("New public URL with cache buster:", newPublicUrl);
+
+    const { error: updateFilepathError } = await supabase
+      .from("entry_form")
+      .update({ filepath: newPublicUrl })
+      .eq("id", entry_form_id);
+
+    if (updateFilepathError) {
+      console.error("Error updating filepath:", updateFilepathError);
+      throw updateFilepathError;
+    }
+
+    console.log("Database updated with new filepath");
+
+    res.json({
+      success: true,
+      message: "Form updated successfully",
+      pdfUrl: newPublicUrl,
+    });
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
